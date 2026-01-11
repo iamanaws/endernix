@@ -19,34 +19,34 @@
       ...
     }:
     let
-      supportedSystems = [
-        "x86_64-linux"
-        "aarch64-linux"
-      ];
+      lib = import ./lib {
+        inherit (nixpkgs) lib;
+        inherit nixpkgs;
+      };
 
-      forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
+      forSystems =
+        f:
+        nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed (
+          system:
+          f {
+            pkgs = import nixpkgs { inherit system; };
+            minecraftPkgs = minecraft.legacyPackages.${system};
+            inherit (lib) mkInstance mkMod modrinth;
+          }
+        );
     in
     {
-      # Library functions for creating Minecraft installations
-      lib = import ./lib { inherit (nixpkgs) lib; };
+      inherit lib minecraft;
 
-      # Pass through minecraft.nix for convenience
-      inherit minecraft;
+      formatter = forSystems ({ pkgs, ... }: pkgs.nixfmt-tree);
 
-      # Helper to get everything needed for a system
-      # Returns: { pkgs, minecraftPkgs, mkInstance, mkMod }
-      forSystem =
-        system:
-        let
-          pkgs = import nixpkgs {
-            inherit system;
-            config.allowUnfree = true;
-          };
-          minecraftPkgs = minecraft.legacyPackages.${system};
-        in
+      packages = forSystems (
+        { pkgs, ... }:
         {
-          inherit pkgs minecraftPkgs;
-          inherit (self.lib) mkInstance mkMod;
-        };
+          update-mods = pkgs.writeShellScriptBin "update-mods" ''
+            exec ${pkgs.python3}/bin/python3 ${./scripts/update-mods.py} "$@"
+          '';
+        }
+      );
     };
 }

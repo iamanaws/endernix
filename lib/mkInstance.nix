@@ -26,7 +26,26 @@ let
   inherit (pkgs)
     writeShellScriptBin
     symlinkJoin
+    fetchurl
     ;
+
+  # Convert mod specs (from modrinth) to fetchurl derivations
+  # Accepts both derivations and { __modrinth = true; url; hash; ... } specs
+  resolveMod =
+    mod:
+    if mod ? __modrinth then
+      fetchurl {
+        inherit (mod) name url hash;
+        passthru = {
+          inherit (mod) pname version;
+          modrinthId = mod.projectId;
+          versionId = mod.versionId;
+        };
+      }
+    else
+      mod;
+
+  resolvedMods = map resolveMod mods;
 
   # Get the base minecraft package for this version/loader
   loaderPkgs = minecraftPkgs."v${version}".${loader}.client;
@@ -36,7 +55,10 @@ let
     if loader == "vanilla" then
       { inherit resourcePacks; }
     else
-      { inherit mods resourcePacks shaderPacks; };
+      {
+        mods = resolvedMods;
+        inherit resourcePacks shaderPacks;
+      };
 
   # Merge with any extra config
   finalConfig = baseConfig // extraConfig;
@@ -81,10 +103,10 @@ symlinkJoin {
       name
       version
       loader
-      mods
       resourcePacks
       shaderPacks
       ;
+    mods = resolvedMods;
     unwrapped = minecraftBase;
 
     # Allow further customization
@@ -129,4 +151,3 @@ symlinkJoin {
     platforms = lib.platforms.linux;
   };
 }
-

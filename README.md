@@ -10,7 +10,39 @@ nix-modpack solves this by giving each installation its own isolated game direct
 
 ## Usage
 
-### Basic Example
+### Using Modrinth (Recommended)
+
+Declare mods by slug and version, let the tooling resolve URLs and hashes from the [Modrinth API](https://docs.modrinth.com/api/).
+
+**1. Create your mod declarations (`mods.nix`):**
+
+```nix
+{
+  # String: specific version
+  fabric-api = "0.116.7+1.21.1";
+
+  # Attribute set: specific version
+  fabric-language-kotlin = {
+    version = "1.13.8+kotlin.2.3.0";
+    gameVersion = "1.21.1";
+  };
+
+  # Attribute set: latest compatible
+  jei = {
+    gameVersion = "1.21.1";
+  };
+}
+```
+
+**2. Generate the lockfile:**
+
+```bash
+nix run github:iamanaws/nix-modpack#update-mods -- mods.nix
+```
+
+This creates `mods.lock.nix` with resolved URLs and hashes.
+
+**3. Use in your flake:**
 
 ```nix
 {
@@ -22,71 +54,69 @@ nix-modpack solves this by giving each installation its own isolated game direct
   outputs = { self, nixpkgs, nix-modpack, ... }:
     let
       system = "x86_64-linux";
-      inherit (nix-modpack.forSystem system) pkgs minecraftPkgs mkInstance;
+      pkgs = import nixpkgs { inherit system; };
+      minecraftPkgs = nix-modpack.minecraft.legacyPackages.${system};
+      inherit (nix-modpack.lib) mkInstance modrinth;
     in {
       packages.${system}.my-instance = mkInstance {
         inherit pkgs minecraftPkgs;
         name = "my-instance";
-        version = "1_21_1";
         loader = "fabric";
-
-        mods = [
-          (pkgs.fetchurl {
-            name = "fabric-api.jar";
-            url = "https://cdn.modrinth.com/data/P7dR8mSH/versions/m6zu1K31/fabric-api-0.116.7+1.21.1.jar";
-            hash = "sha256-CAGMxIyXQVo4AWoA29Wix6Rgumt6BRaQqMs9u16EgqQ=";
-          })
-        ];
+        mods = modrinth.fromLockFile { lockFile = ./mods.lock.nix; };
       };
     };
 }
 ```
 
-### Organizing Mods
+### Mod Declaration Format
 
-For larger installations, define your mods in a separate file:
+| Field | Description |
+|-------|-------------|
+| `project` | Modrinth project slug (defaults to the attribute name) |
+| `version` | Version number (omit to get latest compatible) |
+| `gameVersion` | Minecraft version: `"1.21.1"` |
+| `loader` | Mod loader (defaults to `"fabric"`) |
+
+### Manual Mods (fetchurl)
+
+For mods not on Modrinth:
 
 ```nix
-# mods.nix
-{ pkgs }:
+mkInstance {
+  inherit pkgs minecraftPkgs;
+  name = "my-instance";
+  loader = "fabric";
+  mods = [
+    (pkgs.fetchurl {
+      name = "fabric-api.jar";
+      url = "https://cdn.modrinth.com/data/P7dR8mSH/versions/m6zu1K31/fabric-api-0.116.7+1.21.1.jar";
+      hash = "sha256-CAGMxIyXQVo4AWoA29Wix6Rgumt6BRaQqMs9u16EgqQ=";
+    })
+  ];
+}
+```
+
+### Mixing Modrinth and Manual Mods
+
+```nix
 let
-  inherit (pkgs) fetchurl;
-in {
-  fabric-api = fetchurl {
-    name = "fabric-api.jar";
-    url = "https://cdn.modrinth.com/data/P7dR8mSH/versions/m6zu1K31/fabric-api-0.116.7+1.21.1.jar";
-    hash = "sha256-CAGMxIyXQVo4AWoA29Wix6Rgumt6BRaQqMs9u16EgqQ=";
-  };
+  # Mods from Modrinth lockfile
+  modrinthMods = modrinth.fromLockFile { lockFile = ./mods.lock.nix; };
 
-  jei = fetchurl {
-    name = "jei-fabric.jar";
-    url = "https://cdn.modrinth.com/data/u6dRKJwZ/versions/TvqzuFwN/jei-1.21.1-fabric-19.27.0.340.jar";
-    hash = "sha256-gMNb6eQvynHspXflODNpAlR8H+P1re2yt5VGqwH2a78=";
-  };
-}
-```
-
-```nix
-# flake.nix
-{
-  inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-    nix-modpack.url = "github:iamanaws/nix-modpack";
-  };
-
-  outputs = { self, nixpkgs, nix-modpack, ... }:
-    let
-      system = "x86_64-linux";
-      inherit (nix-modpack.forSystem system) pkgs minecraftPkgs mkInstance;
-      mods = import ./mods.nix { inherit pkgs; };
-    in {
-      packages.${system}.my-instance = mkInstance {
-        inherit pkgs minecraftPkgs;
-        name = "my-instance";
-        loader = "fabric";
-        mods = with mods; [ fabric-api jei ];
-      };
-    };
+  # Manual mods (CurseForge, direct downloads, etc.)
+  manualMods = [
+    (pkgs.fetchurl {
+      name = "some-mod.jar";
+      url = "https://example.com/some-mod-1.0.jar";
+      hash = "sha256-...";
+    })
+  ];
+in
+mkInstance {
+  inherit pkgs minecraftPkgs;
+  name = "mixed";
+  loader = "fabric";
+  mods = modrinthMods ++ manualMods;
 }
 ```
 
@@ -95,23 +125,13 @@ in {
 ```nix
 {
   packages.${system} = {
-    # Modded installation with Cobblemon
-    cobblemon = mkInstance {
+    modded = mkInstance {
       inherit pkgs minecraftPkgs;
-      name = "cobblemon";
+      name = "modded";
       loader = "fabric";
-      mods = with mods; [ fabric-api cobblemon /* ... */ ];
+      mods = modrinth.fromLockFile { lockFile = ./mods.lock.nix; };
     };
 
-    # Light modded installation with QoL mods
-    vanilla-plus = mkInstance {
-      inherit pkgs minecraftPkgs;
-      name = "vanilla-plus";
-      loader = "fabric";
-      mods = with mods; [ fabric-api jei ];
-    };
-
-    # Pure vanilla - isolated directory, no mods
     vanilla = mkInstance {
       inherit pkgs minecraftPkgs;
       name = "vanilla";
@@ -120,8 +140,6 @@ in {
   };
 }
 ```
-
-Each installation gets its own command: `cobblemon`, `vanilla-plus`, `vanilla`.
 
 ## API Reference
 
@@ -150,24 +168,37 @@ mkInstance {
 - `passthru.withResourcePacks` - function to add more resource packs
 - `passthru.unwrapped` - the underlying minecraft.nix package
 
-### `mkMod` (optional)
+### `modrinth.fromLockFile`
 
-Helper for defining mods with metadata. Plain `fetchurl` works fine for most cases.
+Load mods from a generated lockfile.
 
 ```nix
-mkMod {
-  pkgs;
-  pname;          # mod name
-  version;        # mod version
-  url;            # download URL
-  hash;           # sri hash
+modrinth.fromLockFile { lockFile = ./mods.lock.nix; }
+# Returns: [ <derivation> ... ]
+```
 
-  # Optional metadata
-  description ? "";
-  homepage ? "";
-  mcVersions ? [];
-  dependencies ? [];
-  optional ? [];
+# Returns: [ <derivation> ... ]
+```
+
+## CLI Tools
+
+### `update-mods`
+
+Resolve mods from [Modrinth API](https://docs.modrinth.com/api/) and generate a lockfile.
+
+```bash
+# Run from nix-modpack
+nix run github:iamanaws/nix-modpack#update-mods -- mods.nix
+
+# Or expose it in your flake for convenience
+nix run .#update-mods -- mods.nix
+```
+
+To expose in your flake:
+
+```nix
+{
+  inherit (nix-modpack.packages.${system}) update-mods;
 }
 ```
 
@@ -177,31 +208,10 @@ Each installation stores its data in `~/.local/share/minecraft/<name>/`:
 
 ```
 ~/.local/share/minecraft/
-├── cobblemon/
+├── modded/
 │   ├── saves/
 │   ├── resourcepacks/
-│   ├── screenshots/
-│   └── ...
-├── vanilla-plus/
 │   └── ...
 └── vanilla/
     └── ...
 ```
-
-## Adding Mods
-
-1. Find the mod on [Modrinth](https://modrinth.com/) or [CurseForge](https://www.curseforge.com/minecraft/mc-mods)
-2. Get the direct download URL for the `.jar` file
-3. Add it with `fetchurl`:
-
-```nix
-my-mod = pkgs.fetchurl {
-  name = "my-mod.jar";  # Must end in .jar for Fabric to load it
-  url = "https://cdn.modrinth.com/data/.../my-mod-1.0.jar";
-  hash = "";  # Leave empty, nix will error with the correct hash
-};
-```
-
-## License
-
-MIT
