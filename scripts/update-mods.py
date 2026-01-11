@@ -17,7 +17,7 @@ import base64
 from pathlib import Path
 
 API_BASE = "https://api.modrinth.com/v2"
-USER_AGENT = "nix-modpack/1.0 (github.com/iamanaws/nix-modpack)"
+USER_AGENT = "endernix/1.0 (github.com/iamanaws/endernix)"
 
 
 def api_get(endpoint: str) -> dict:

@@ -1,22 +1,23 @@
-# nix-modpack
+= endernix
 
-Manage multiple Minecraft installations with Nix, built on [minecraft.nix](https://github.com/Ninlives/minecraft.nix).
+Manage multiple Minecraft installations with Nix, built on https://github.com/Ninlives/minecraft.nix[minecraft.nix].
 
-## Why?
+== Why?
 
 minecraft.nix is great for running Minecraft declaratively, but it uses a single shared game directory. This makes it difficult to run multiple installations side by side - different mod configurations, different versions, or separate worlds.
 
-nix-modpack solves this by giving each installation its own isolated game directory with its own saves, screenshots, and configuration.
+endernix solves this by giving each installation its own isolated game directory with its own saves, screenshots, and configuration.
 
-## Usage
+== Usage
 
-### Using Modrinth (Recommended)
+=== Using Modrinth (Recommended)
 
-Declare mods by slug and version, let the tooling resolve URLs and hashes from the [Modrinth API](https://docs.modrinth.com/api/).
+Declare mods by slug and version, let the tooling resolve URLs and hashes from the https://docs.modrinth.com/api/[Modrinth API].
 
-**1. Create your mod declarations (`mods.nix`):**
+*1. Create your mod declarations (`mods.nix`):*
 
-```nix
+[source,nix]
+----
 {
   # String: specific version
   fabric-api = "0.116.7+1.21.1";
@@ -32,56 +33,69 @@ Declare mods by slug and version, let the tooling resolve URLs and hashes from t
     gameVersion = "1.21.1";
   };
 }
-```
+----
 
-**2. Generate the lockfile:**
+*2. Generate the lockfile:*
 
-```bash
-nix run github:iamanaws/nix-modpack#update-mods -- mods.nix
-```
+[source,bash]
+----
+nix run github:iamanaws/endernix#update-mods -- mods.nix
+----
 
 This creates `mods.lock.nix` with resolved URLs and hashes.
 
-**3. Use in your flake:**
+*3. Use in your flake:*
 
-```nix
+[source,nix]
+----
 {
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-    nix-modpack.url = "github:iamanaws/nix-modpack";
+    endernix.url = "github:iamanaws/endernix";
   };
 
-  outputs = { self, nixpkgs, nix-modpack, ... }:
+  outputs = { self, nixpkgs, endernix, ... }:
     let
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
-      minecraftPkgs = nix-modpack.minecraft.legacyPackages.${system};
-      inherit (nix-modpack.lib) mkInstance modrinth;
+      minecraftPkgs = endernix.minecraft.legacyPackages.${system};
+      inherit (endernix.lib) mkInstance modrinth;
     in {
       packages.${system}.my-instance = mkInstance {
         inherit pkgs minecraftPkgs;
         name = "my-instance";
         loader = "fabric";
-        mods = modrinth.fromLockFile { lockFile = ./mods.lock.nix; };
+        mods = modrinth.fromLockFile ./mods.lock.nix;
       };
     };
 }
-```
+----
 
-### Mod Declaration Format
+=== Mod Declaration Format
 
-| Field | Description |
-|-------|-------------|
-| `project` | Modrinth project slug (defaults to the attribute name) |
-| `version` | Version number (omit to get latest compatible) |
-| `gameVersion` | Minecraft version: `"1.21.1"` |
-| `loader` | Mod loader (defaults to `"fabric"`) |
+[cols="1,3"]
+|===
+| Field | Description
 
-### Manual Mods (fetchurl)
+| `project`
+| Modrinth project slug (defaults to the attribute name)
+
+| `version`
+| Version number (omit to get latest compatible)
+
+| `gameVersion`
+| Minecraft version: `"1.21.1"`
+
+| `loader`
+| Mod loader (defaults to `"fabric"`)
+|===
+
+=== Manual Mods (fetchurl)
 
 For mods not on Modrinth:
 
-```nix
+[source,nix]
+----
 mkInstance {
   inherit pkgs minecraftPkgs;
   name = "my-instance";
@@ -94,14 +108,15 @@ mkInstance {
     })
   ];
 }
-```
+----
 
-### Mixing Modrinth and Manual Mods
+=== Mixing Modrinth and Manual Mods
 
-```nix
+[source,nix]
+----
 let
   # Mods from Modrinth lockfile
-  modrinthMods = modrinth.fromLockFile { lockFile = ./mods.lock.nix; };
+  modrinthMods = modrinth.fromLockFile ./mods.lock.nix;
 
   # Manual mods (CurseForge, direct downloads, etc.)
   manualMods = [
@@ -118,18 +133,19 @@ mkInstance {
   loader = "fabric";
   mods = modrinthMods ++ manualMods;
 }
-```
+----
 
-### Multiple Installations
+=== Multiple Installations
 
-```nix
+[source,nix]
+----
 {
   packages.${system} = {
     modded = mkInstance {
       inherit pkgs minecraftPkgs;
       name = "modded";
       loader = "fabric";
-      mods = modrinth.fromLockFile { lockFile = ./mods.lock.nix; };
+      mods = modrinth.fromLockFile ./mods.lock.nix;
     };
 
     vanilla = mkInstance {
@@ -139,15 +155,16 @@ mkInstance {
     };
   };
 }
-```
+----
 
-## API Reference
+== API Reference
 
-### `mkInstance`
+=== `mkInstance`
 
 Creates an isolated Minecraft installation.
 
-```nix
+[source,nix]
+----
 mkInstance {
   pkgs;                   # nixpkgs
   minecraftPkgs;          # minecraft.nix legacyPackages
@@ -160,53 +177,54 @@ mkInstance {
   jvmArgs ? [];           # extra JVM arguments
   extraConfig ? {};       # extra config passed to minecraft.nix
 }
-```
+----
 
-**Returns:** A derivation with:
-- `bin/<name>` - launcher script
-- `passthru.withMods` - function to add more mods
-- `passthru.withResourcePacks` - function to add more resource packs
-- `passthru.unwrapped` - the underlying minecraft.nix package
+*Returns:* A derivation with:
 
-### `modrinth.fromLockFile`
+* `bin/<name>` - launcher script
+* `passthru.withMods` - function to add more mods
+* `passthru.withResourcePacks` - function to add more resource packs
+* `passthru.unwrapped` - the underlying minecraft.nix package
+
+=== `modrinth.fromLockFile`
 
 Load mods from a generated lockfile.
 
-```nix
-modrinth.fromLockFile { lockFile = ./mods.lock.nix; }
-# Returns: [ <derivation> ... ]
-```
+[source,nix]
+----
+modrinth.fromLockFile ./mods.lock.nix
+# Returns: [ <mod-spec> ... ]
+----
 
-# Returns: [ <derivation> ... ]
-```
+== CLI Tools
 
-## CLI Tools
+=== `update-mods`
 
-### `update-mods`
+Resolve mods from https://docs.modrinth.com/api/[Modrinth API] and generate a lockfile.
 
-Resolve mods from [Modrinth API](https://docs.modrinth.com/api/) and generate a lockfile.
-
-```bash
-# Run from nix-modpack
-nix run github:iamanaws/nix-modpack#update-mods -- mods.nix
+[source,bash]
+----
+# Run from endernix
+nix run github:iamanaws/endernix#update-mods -- mods.nix
 
 # Or expose it in your flake for convenience
 nix run .#update-mods -- mods.nix
-```
+----
 
 To expose in your flake:
 
-```nix
+[source,nix]
+----
 {
-  inherit (nix-modpack.packages.${system}) update-mods;
+  inherit (endernix.packages.${system}) update-mods;
 }
-```
+----
 
-## Game Data Location
+== Game Data Location
 
 Each installation stores its data in `~/.local/share/minecraft/<name>/`:
 
-```
+----
 ~/.local/share/minecraft/
 ├── modded/
 │   ├── saves/
@@ -214,4 +232,4 @@ Each installation stores its data in `~/.local/share/minecraft/<name>/`:
 │   └── ...
 └── vanilla/
     └── ...
-```
+----

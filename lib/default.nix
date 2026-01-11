@@ -1,4 +1,4 @@
-# Library functions for nix-modpack
+# Library functions
 { lib, nixpkgs }:
 
 {
